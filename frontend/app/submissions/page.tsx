@@ -237,17 +237,19 @@ function SubmissionsWorkspace() {
     ],
   );
 
-  /** Click handler for a column header: toggle asc -> desc -> clear (back to default). */
+  /**
+   * Click handler for a column header. Two-state toggle: clicking a new column
+   * starts ascending; clicking the active column flips direction (asc <-> desc).
+   * Never clears the ordering — the default sort (`-created_at`) is only active
+   * when the user has never clicked a header.
+   */
   const onSortChange = (sortKey: string) => {
     if (sort.key !== sortKey) {
       updateParams({ ordering: sortKey, page: null });
       return;
     }
-    if (sort.direction === 'asc') {
-      updateParams({ ordering: `-${sortKey}`, page: null });
-      return;
-    }
-    updateParams({ ordering: null, page: null });
+    const next = sort.direction === 'asc' ? `-${sortKey}` : sortKey;
+    updateParams({ ordering: next, page: null });
   };
 
   const submissionsQuery = useSubmissionsList(query, !dateRangeInvalid);
