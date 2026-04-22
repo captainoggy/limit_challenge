@@ -25,7 +25,8 @@ RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 EXPOSE 8000
 
 ENTRYPOINT ["docker-entrypoint.sh"]
-# Gunicorn for production-grade serving. Locally, `docker compose` can
-# override this with `runserver` via a `command:` key if live-reload is
-# desired — but gunicorn is correct for everything else.
-CMD ["gunicorn", "server.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "2", "--access-logfile", "-"]
+# Gunicorn for production-grade serving. Bind to $PORT so the container works
+# on PaaS hosts (Render, Fly, etc.) that inject a dynamic port, with 8000 as
+# the local fallback. Shell form is required so $PORT expands at runtime.
+# Locally, `docker compose` can override this with `runserver` for live-reload.
+CMD gunicorn server.wsgi:application --bind 0.0.0.0:${PORT:-8000} --workers 2 --access-logfile -

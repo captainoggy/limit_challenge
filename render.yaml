@@ -21,6 +21,10 @@ services:
     autoDeploy: true
     healthCheckPath: /api/brokers/
     envVars:
+      # Tell Render explicitly which port the container listens on. Gunicorn
+      # binds to $PORT, and Render port-scans the same value to route traffic.
+      - key: PORT
+        value: "8000"
       - key: DJANGO_DEBUG
         value: "false"
       - key: DJANGO_SECRET_KEY
