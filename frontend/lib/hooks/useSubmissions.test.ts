@@ -56,4 +56,13 @@ describe('buildParams', () => {
   it('forwards a non-default pageSize', () => {
     expect(buildParams({ pageSize: 50 }).pageSize).toBe(50);
   });
+
+  it('forwards ordering when set (including leading - for desc)', () => {
+    expect(buildParams({ ordering: 'company__legal_name' }).ordering).toBe('company__legal_name');
+    expect(buildParams({ ordering: '-created_at' }).ordering).toBe('-created_at');
+  });
+
+  it('omits ordering when not set', () => {
+    expect('ordering' in buildParams({})).toBe(false);
+  });
 });

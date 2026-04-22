@@ -213,3 +213,45 @@ class SubmissionsApiTests(TestCase):
         self.assertEqual(response.status_code, http_status.HTTP_200_OK)
         body = response.json()
         self.assertLessEqual(len(body["results"]), 100)
+
+    # ----------------------------------------------------------------- ordering
+
+    def _ordered_ids(self, response):
+        """Ids in response order (not a set — order matters here)."""
+        return [row["id"] for row in response.data["results"]]
+
+    def test_default_ordering_is_newest_created_first(self):
+        response = self.client.get(self.list_url)
+        # s4 (1d) > s3 (5d) > s2 (10d) > s1 (30d)
+        self.assertEqual(
+            self._ordered_ids(response),
+            [self.s4.id, self.s3.id, self.s2.id, self.s1.id],
+        )
+
+    def test_ordering_by_company_name_ascending(self):
+        response = self.client.get(self.list_url, {"ordering": "company__legal_name"})
+        # ACME Technologies (s1 & s4) < Beta Health Partners (s2) < Gamma Retail (s3).
+        # Within ACME the -id tiebreak puts s4 before s1.
+        self.assertEqual(
+            self._ordered_ids(response),
+            [self.s4.id, self.s1.id, self.s2.id, self.s3.id],
+        )
+
+    def test_ordering_by_priority_uses_semantic_order_not_alphabetical(self):
+        # Alphabetical would be high, low, medium. Semantic is high -> medium -> low.
+        # s1 & s4 are high, s2 is medium, s3 is low.
+        response = self.client.get(self.list_url, {"ordering": "priority"})
+        self.assertEqual(
+            self._ordered_ids(response),
+            [self.s4.id, self.s1.id, self.s2.id, self.s3.id],
+        )
+
+    def test_ordering_rejects_fields_outside_the_whitelist(self):
+        # 'summary' is not in ordering_fields; DRF should silently drop the
+        # unknown term and fall back to the default ordering, NOT 500.
+        response = self.client.get(self.list_url, {"ordering": "summary"})
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+        self.assertEqual(
+            self._ordered_ids(response),
+            [self.s4.id, self.s3.id, self.s2.id, self.s1.id],
+        )

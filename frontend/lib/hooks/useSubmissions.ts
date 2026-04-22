@@ -24,6 +24,7 @@ export function buildParams(query: SubmissionListQuery) {
   if (query.hasNotes !== undefined) params.hasNotes = query.hasNotes;
   if (query.page && query.page > 1) params.page = query.page;
   if (query.pageSize && query.pageSize !== DEFAULT_PAGE_SIZE) params.pageSize = query.pageSize;
+  if (query.ordering) params.ordering = query.ordering;
   return params;
 }
 

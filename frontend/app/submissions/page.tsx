@@ -22,6 +22,7 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  TableSortLabel,
   TextField,
   Tooltip,
   Typography,
@@ -43,6 +44,33 @@ const STATUS_OPTIONS: { label: string; value: SubmissionStatus | '' }[] = [
   { label: 'Closed', value: 'closed' },
   { label: 'Lost', value: 'lost' },
 ];
+
+/**
+ * Columns in the submissions table. `sortKey` is the field name the backend
+ * whitelists for `?ordering=`; `null` means the column is displayed but not
+ * sortable (Latest note — derived from a subquery, not worth the index cost).
+ */
+type SortDirection = 'asc' | 'desc';
+const COLUMNS = [
+  { id: 'company', label: 'Company', sortKey: 'company__legal_name', align: 'left' as const },
+  { id: 'broker', label: 'Broker', sortKey: 'broker__name', align: 'left' as const },
+  { id: 'owner', label: 'Owner', sortKey: 'owner__full_name', align: 'left' as const },
+  { id: 'status', label: 'Status', sortKey: 'status', align: 'left' as const },
+  { id: 'priority', label: 'Priority', sortKey: 'priority', align: 'left' as const },
+  { id: 'docs', label: 'Docs', sortKey: 'document_count', align: 'right' as const },
+  { id: 'notes', label: 'Notes', sortKey: 'note_count', align: 'right' as const },
+  { id: 'latestNote', label: 'Latest note', sortKey: null, align: 'left' as const },
+  { id: 'created', label: 'Created', sortKey: 'created_at', align: 'left' as const },
+] as const;
+
+const DEFAULT_ORDERING = '-created_at';
+
+/** Parse `?ordering=` into { key, direction }. Leading `-` means descending. */
+function parseOrdering(raw: string | null): { key: string; direction: SortDirection } {
+  const value = raw ?? DEFAULT_ORDERING;
+  if (value.startsWith('-')) return { key: value.slice(1), direction: 'desc' };
+  return { key: value, direction: 'asc' };
+}
 
 function parseBool(raw: string | null): boolean | undefined {
   if (raw === 'true') return true;
@@ -107,6 +135,8 @@ function SubmissionsWorkspace() {
       ? raw
       : DEFAULT_PAGE_SIZE;
   })();
+  const urlOrdering = searchParams.get('ordering');
+  const sort = parseOrdering(urlOrdering);
 
   // Local state for the free-text company search so typing feels snappy and we
   // debounce URL updates (which drive the query).
@@ -148,6 +178,7 @@ function SubmissionsWorkspace() {
       hasNotes: urlHasNotes,
       page: urlPage,
       pageSize: urlPageSize,
+      ordering: urlOrdering || undefined,
     }),
     [
       urlStatus,
@@ -159,8 +190,22 @@ function SubmissionsWorkspace() {
       urlHasNotes,
       urlPage,
       urlPageSize,
+      urlOrdering,
     ],
   );
+
+  /** Click handler for a column header: toggle asc -> desc -> clear (back to default). */
+  const onSortChange = (sortKey: string) => {
+    if (sort.key !== sortKey) {
+      updateParams({ ordering: sortKey, page: null });
+      return;
+    }
+    if (sort.direction === 'asc') {
+      updateParams({ ordering: `-${sortKey}`, page: null });
+      return;
+    }
+    updateParams({ ordering: null, page: null });
+  };
 
   const submissionsQuery = useSubmissionsList(query, !dateRangeInvalid);
   const brokerQuery = useBrokerOptions();
@@ -347,7 +392,12 @@ function SubmissionsWorkspace() {
         ) : rows.length === 0 ? (
           <EmptyState onClear={activeFilterCount > 0 ? clearFilters : undefined} />
         ) : (
-          <SubmissionsTable rows={rows} onRowClick={(id) => router.push(`/submissions/${id}`)} />
+          <SubmissionsTable
+            rows={rows}
+            sort={sort}
+            onSortChange={onSortChange}
+            onRowClick={(id) => router.push(`/submissions/${id}`)}
+          />
         )}
 
         {totalCount > 0 ? (
@@ -424,9 +474,13 @@ function ResultsHeader({
 
 function SubmissionsTable({
   rows,
+  sort,
+  onSortChange,
   onRowClick,
 }: {
   rows: SubmissionListItem[];
+  sort: { key: string; direction: SortDirection };
+  onSortChange: (sortKey: string) => void;
   onRowClick: (id: number) => void;
 }) {
   return (
@@ -434,15 +488,28 @@ function SubmissionsTable({
       <Table size="medium">
         <TableHead>
           <TableRow>
-            <TableCell>Company</TableCell>
-            <TableCell>Broker</TableCell>
-            <TableCell>Owner</TableCell>
-            <TableCell>Status</TableCell>
-            <TableCell>Priority</TableCell>
-            <TableCell align="right">Docs</TableCell>
-            <TableCell align="right">Notes</TableCell>
-            <TableCell>Latest note</TableCell>
-            <TableCell>Created</TableCell>
+            {COLUMNS.map((col) => {
+              const isActive = col.sortKey !== null && sort.key === col.sortKey;
+              return (
+                <TableCell
+                  key={col.id}
+                  align={col.align}
+                  sortDirection={isActive ? sort.direction : false}
+                >
+                  {col.sortKey ? (
+                    <TableSortLabel
+                      active={isActive}
+                      direction={isActive ? sort.direction : 'asc'}
+                      onClick={() => onSortChange(col.sortKey!)}
+                    >
+                      {col.label}
+                    </TableSortLabel>
+                  ) : (
+                    col.label
+                  )}
+                </TableCell>
+              );
+            })}
           </TableRow>
         </TableHead>
         <TableBody>
@@ -539,26 +606,18 @@ function SubmissionsTableSkeleton() {
       <Table>
         <TableHead>
           <TableRow>
-            {[
-              'Company',
-              'Broker',
-              'Owner',
-              'Status',
-              'Priority',
-              'Docs',
-              'Notes',
-              'Latest note',
-              'Created',
-            ].map((h) => (
-              <TableCell key={h}>{h}</TableCell>
+            {COLUMNS.map((col) => (
+              <TableCell key={col.id} align={col.align}>
+                {col.label}
+              </TableCell>
             ))}
           </TableRow>
         </TableHead>
         <TableBody>
-          {Array.from({ length: 6 }).map((_, i) => (
-            <TableRow key={i}>
-              {Array.from({ length: 9 }).map((_, j) => (
-                <TableCell key={j}>
+          {Array.from({ length: 6 }).map((_, rowIndex) => (
+            <TableRow key={rowIndex}>
+              {COLUMNS.map((col) => (
+                <TableCell key={col.id} align={col.align}>
                   <Skeleton variant="text" />
                 </TableCell>
               ))}

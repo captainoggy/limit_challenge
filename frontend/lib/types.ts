@@ -93,4 +93,5 @@ export interface SubmissionListFilters {
 export interface SubmissionListQuery extends SubmissionListFilters {
   page?: number;
   pageSize?: number;
+  ordering?: string;
 }
