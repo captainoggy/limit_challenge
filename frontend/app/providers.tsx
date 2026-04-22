@@ -3,15 +3,15 @@
 import {
   AppBar,
   Box,
+  ButtonBase,
   Container,
   CssBaseline,
-  Link as MuiLink,
   ThemeProvider,
   Toolbar,
   Typography,
   createTheme,
 } from '@mui/material';
-import Link from 'next/link';
+import { usePathname, useRouter } from 'next/navigation';
 import { PropsWithChildren, useMemo, useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
@@ -42,6 +42,20 @@ function useTheme() {
 }
 
 function AppShell({ children }: PropsWithChildren) {
+  const router = useRouter();
+  const pathname = usePathname();
+
+  // Home is /submissions. Clicking the logo or the "Submissions" nav link
+  // should always drop filters, pagination, and sort — i.e., take the user
+  // to a *fresh* list. On any other route, it's just a normal navigation.
+  const goHome = () => {
+    if (pathname === '/submissions') {
+      router.replace('/submissions', { scroll: false });
+    } else {
+      router.push('/submissions');
+    }
+  };
+
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
       <AppBar
@@ -52,12 +66,17 @@ function AppShell({ children }: PropsWithChildren) {
       >
         <Container maxWidth="xl">
           <Toolbar disableGutters sx={{ gap: 2 }}>
-            <MuiLink
-              component={Link}
-              href="/submissions"
-              underline="none"
-              color="inherit"
-              sx={{ display: 'flex', alignItems: 'center', gap: 1 }}
+            <ButtonBase
+              onClick={goHome}
+              aria-label="Go to submissions home"
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1,
+                borderRadius: 1,
+                px: 0.5,
+                py: 0.5,
+              }}
             >
               <Box
                 sx={{
@@ -77,17 +96,21 @@ function AppShell({ children }: PropsWithChildren) {
               <Typography variant="subtitle1" fontWeight={600}>
                 Submission Tracker
               </Typography>
-            </MuiLink>
+            </ButtonBase>
             <Box sx={{ flex: 1 }} />
-            <MuiLink
-              component={Link}
-              href="/submissions"
-              underline="none"
-              color="text.primary"
-              sx={{ fontSize: 14, fontWeight: 500 }}
+            <ButtonBase
+              onClick={goHome}
+              sx={{
+                fontSize: 14,
+                fontWeight: 500,
+                color: 'text.primary',
+                borderRadius: 1,
+                px: 1,
+                py: 0.5,
+              }}
             >
               Submissions
-            </MuiLink>
+            </ButtonBase>
           </Toolbar>
         </Container>
       </AppBar>
