@@ -1,0 +1,49 @@
+# Single-command dev/demo stack:
+#   docker compose up --build
+# → backend  http://localhost:8000/api
+# → frontend http://localhost:3000
+#
+# The frontend talks to the backend from the BROWSER (client-side React
+# Query), so localhost:8000 is the correct URL — the backend container is
+# port-mapped to the host. No internal-network URL needed.
+
+services:
+  backend:
+    build:
+      context: ./backend
+    container_name: limit-backend
+    ports:
+      - "8000:8000"
+    volumes:
+      # Persist the seeded SQLite DB across restarts so notes/docs stay put.
+      - backend-data:/app/data
+    environment:
+      # Store the DB under the volume mount; override via settings if needed.
+      DJANGO_DB_PATH: /app/data/db.sqlite3
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/api/brokers/').status==200 else 1)\""
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # Baked in at build time (NEXT_PUBLIC_* contract). Override here to
+        # point the UI at a non-default backend.
+        NEXT_PUBLIC_API_BASE_URL: http://localhost:8000/api
+    container_name: limit-frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  backend-data:

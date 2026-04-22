@@ -1,0 +1,14 @@
+node_modules/
+.next/
+out/
+build/
+coverage/
+.git/
+.gitignore
+.DS_Store
+.env*
+*.log
+.vscode/
+.idea/
+next-env.d.ts
+tsconfig.tsbuildinfo
