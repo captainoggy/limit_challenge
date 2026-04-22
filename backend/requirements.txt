@@ -9,6 +9,7 @@ djangorestframework-camel-case==1.4.2
 Faker==33.3.0
 filelock==3.16.1
 greenlet==3.1.0
+gunicorn==23.0.0
 lxml==5.3.1
 msgpack==1.1.0
 packaging==24.2
@@ -19,4 +20,5 @@ pynvim==0.5.0
 sqlparse==0.5.5
 typing_extensions==4.15.0
 virtualenv==20.26.6
+whitenoise==6.8.2
 wrapt==1.17.2

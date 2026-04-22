@@ -25,4 +25,7 @@ RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 EXPOSE 8000
 
 ENTRYPOINT ["docker-entrypoint.sh"]
-CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]
+# Gunicorn for production-grade serving. Locally, `docker compose` can
+# override this with `runserver` via a `command:` key if live-reload is
+# desired — but gunicorn is correct for everything else.
+CMD ["gunicorn", "server.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "2", "--access-logfile", "-"]

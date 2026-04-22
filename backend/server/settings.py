@@ -17,16 +17,37 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
-# Quick-start development settings - unsuitable for production
-# See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
+# All production-sensitive settings below honor env vars so the same image can
+# run locally (with safe defaults) and on a PaaS like Render (with secrets
+# injected via the dashboard). See the "Deployment" section of README.md.
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure--i^5bam1xi!k^$hyanp@-1kgey0aciz8=i55n@-pn5^!9jl8_c'
+def _env_bool(name: str, default: bool) -> bool:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
 
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
 
-ALLOWED_HOSTS = []
+def _env_list(name: str) -> list[str]:
+    raw = os.environ.get(name, "")
+    return [item.strip() for item in raw.split(",") if item.strip()]
+
+
+SECRET_KEY = os.environ.get(
+    "DJANGO_SECRET_KEY",
+    "django-insecure--i^5bam1xi!k^$hyanp@-1kgey0aciz8=i55n@-pn5^!9jl8_c",
+)
+
+DEBUG = _env_bool("DJANGO_DEBUG", default=True)
+
+# Comma-separated. Render injects RENDER_EXTERNAL_HOSTNAME automatically; we
+# accept it so the service works without manual configuration on first deploy.
+ALLOWED_HOSTS = _env_list("DJANGO_ALLOWED_HOSTS") or (
+    ["localhost", "127.0.0.1", "[::1]"] if DEBUG else []
+)
+_render_host = os.environ.get("RENDER_EXTERNAL_HOSTNAME")
+if _render_host and _render_host not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append(_render_host)
 
 
 # Application definition
@@ -46,6 +67,9 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    # WhiteNoise serves collected static files directly from gunicorn, no
+    # separate web server required on the PaaS.
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -123,6 +147,14 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
 STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+
+# WhiteNoise storage with hashed filenames + gzip/brotli. Only used when
+# `collectstatic` has been run (our Docker entrypoint runs it in prod).
+STORAGES = {
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
+}
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
@@ -150,4 +182,22 @@ JSON_UNDERSCOREIZE = {
     'no_underscore_before_number': True,
 }
 
-CORS_ALLOW_ALL_ORIGINS = True
+# CORS: in dev we allow everything for convenience; in prod we require an
+# explicit allow-list of origins (e.g. the Vercel URL). Set
+# DJANGO_CORS_ALLOWED_ORIGINS in the PaaS dashboard as a comma-separated list.
+if DEBUG:
+    CORS_ALLOW_ALL_ORIGINS = True
+else:
+    CORS_ALLOWED_ORIGINS = _env_list("DJANGO_CORS_ALLOWED_ORIGINS")
+
+# Trust the PaaS's TLS-terminating proxy so Django builds absolute URLs with
+# https:// (important for DRF's paginated `next`/`previous` links).
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
+# Reasonable hardening defaults when not in DEBUG. These are no-ops locally.
+if not DEBUG:
+    SECURE_SSL_REDIRECT = _env_bool("DJANGO_SECURE_SSL_REDIRECT", default=True)
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    # CSRF trusted origins include scheme; usually the Vercel URL.
+    CSRF_TRUSTED_ORIGINS = _env_list("DJANGO_CSRF_TRUSTED_ORIGINS")
