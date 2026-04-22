@@ -2,11 +2,13 @@
 
 import {
   Alert,
+  AlertTitle,
   Box,
   Button,
   Card,
   CardContent,
   Chip,
+  CircularProgress,
   Container,
   FormControlLabel,
   LinearProgress,
@@ -85,6 +87,47 @@ function useDebounced<T>(value: T, delay = 300) {
     return () => clearTimeout(t);
   }, [value, delay]);
   return debounced;
+}
+
+/**
+ * Render's free tier spins the backend down after ~15 min of inactivity,
+ * and the first request afterwards takes about 55 seconds to warm up.
+ * If a load is still running after `QUIET_SECONDS`, we surface a banner
+ * with a live countdown. If the load is still running when the countdown
+ * hits zero, we hard-reload so React Query doesn't sit on a stale pending
+ * promise if the waking request itself timed out.
+ */
+const COLD_START_SECONDS = 55;
+const QUIET_SECONDS = 3;
+
+function useColdStartCountdown(isLoading: boolean) {
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    // A wall-clock counter is the canonical case where set-state-in-effect
+    // is intended behavior: reset when the subject transitions off, tick
+    // while it is on. The lint rule targets derivation-from-props cases,
+    // which this is not.
+    /* eslint-disable react-hooks/set-state-in-effect */
+    if (!isLoading) {
+      setElapsed(0);
+      return;
+    }
+    const interval = setInterval(() => setElapsed((e) => e + 1), 1000);
+    return () => clearInterval(interval);
+    /* eslint-enable react-hooks/set-state-in-effect */
+  }, [isLoading]);
+
+  useEffect(() => {
+    if (isLoading && elapsed >= COLD_START_SECONDS) {
+      window.location.reload();
+    }
+  }, [isLoading, elapsed]);
+
+  return {
+    showBanner: isLoading && elapsed >= QUIET_SECONDS,
+    secondsRemaining: Math.max(0, COLD_START_SECONDS - elapsed),
+  };
 }
 
 export default function SubmissionsPage() {
@@ -209,6 +252,7 @@ function SubmissionsWorkspace() {
 
   const submissionsQuery = useSubmissionsList(query, !dateRangeInvalid);
   const brokerQuery = useBrokerOptions();
+  const coldStart = useColdStartCountdown(submissionsQuery.isLoading);
 
   const totalCount = submissionsQuery.data?.count ?? 0;
   const totalPages = Math.max(1, Math.ceil(totalCount / urlPageSize));
@@ -388,7 +432,17 @@ function SubmissionsWorkspace() {
             {process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:8000/api'}.
           </Alert>
         ) : submissionsQuery.isLoading ? (
-          <SubmissionsTableSkeleton />
+          <Stack spacing={2}>
+            {coldStart.showBanner ? (
+              <Alert severity="info" icon={<CircularProgress size={20} thickness={5} />}>
+                <AlertTitle>Waking up the backend</AlertTitle>
+                The API is hosted on Render&apos;s free tier, which spins down after ~15 min of
+                inactivity. First load takes about {COLD_START_SECONDS} seconds. We&apos;ll refresh
+                automatically in <strong>{coldStart.secondsRemaining}s</strong>.
+              </Alert>
+            ) : null}
+            <SubmissionsTableSkeleton />
+          </Stack>
         ) : rows.length === 0 ? (
           <EmptyState onClear={activeFilterCount > 0 ? clearFilters : undefined} />
         ) : (
