@@ -132,6 +132,16 @@ class SubmissionsApiTests(TestCase):
         # s2 (10d), s3 (5d), s4 (1d) fall inside; s1 (30d) does not.
         self.assertEqual(self._ids(response), {self.s2.id, self.s3.id, self.s4.id})
 
+    def test_inverted_date_range_returns_400(self):
+        now = timezone.now()
+        params = {
+            "createdFrom": now.isoformat(),
+            "createdTo": (now - timedelta(days=10)).isoformat(),
+        }
+        response = self.client.get(self.list_url, params)
+        self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
+        self.assertIn("createdFrom", response.json())
+
     def test_has_documents_true_excludes_rows_without_documents(self):
         response = self.client.get(self.list_url, {"hasDocuments": "true"})
         self.assertEqual(self._ids(response), {self.s1.id, self.s2.id})

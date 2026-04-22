@@ -1,5 +1,6 @@
 import django_filters
 from django.db.models import Q
+from rest_framework.exceptions import ValidationError
 
 from submissions import models
 
@@ -39,6 +40,19 @@ class SubmissionFilterSet(django_filters.FilterSet):
             "hasDocuments",
             "hasNotes",
         ]
+
+    @property
+    def qs(self):
+        # Cross-field validation: a date range where "from" is after "to" almost
+        # always means the user mixed them up. Silently returning zero rows is
+        # worse than failing loudly, so we reject it with a 400.
+        created_from = self.form.cleaned_data.get("createdFrom")
+        created_to = self.form.cleaned_data.get("createdTo")
+        if created_from and created_to and created_from > created_to:
+            raise ValidationError(
+                {"createdFrom": "createdFrom must be on or before createdTo."}
+            )
+        return super().qs
 
     def filter_company_search(self, queryset, name, value):
         term = (value or "").strip()

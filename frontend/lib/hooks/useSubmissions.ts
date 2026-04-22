@@ -39,12 +39,13 @@ async function fetchSubmissionDetail(id: string | number) {
   return response.data;
 }
 
-export function useSubmissionsList(query: SubmissionListQuery) {
+export function useSubmissionsList(query: SubmissionListQuery, enabled = true) {
   return useQuery({
     queryKey: [SUBMISSIONS_QUERY_KEY, 'list', query] as QueryKey,
     queryFn: () => fetchSubmissions(query),
     placeholderData: keepPreviousData,
     staleTime: 15_000,
+    enabled,
   });
 }
 

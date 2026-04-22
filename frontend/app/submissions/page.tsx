@@ -95,6 +95,9 @@ function SubmissionsWorkspace() {
   const urlCompanySearch = searchParams.get('companySearch') ?? '';
   const urlCreatedFrom = searchParams.get('createdFrom') ?? '';
   const urlCreatedTo = searchParams.get('createdTo') ?? '';
+  // String-compare is safe because both are ISO-ordered YYYY-MM-DD from the
+  // native date input. If one side is empty, the range can't be invalid yet.
+  const dateRangeInvalid = Boolean(urlCreatedFrom && urlCreatedTo && urlCreatedFrom > urlCreatedTo);
   const urlHasDocuments = parseBool(searchParams.get('hasDocuments'));
   const urlHasNotes = parseBool(searchParams.get('hasNotes'));
   const urlPage = Math.max(1, Number(searchParams.get('page') ?? '1') || 1);
@@ -159,7 +162,7 @@ function SubmissionsWorkspace() {
     ],
   );
 
-  const submissionsQuery = useSubmissionsList(query);
+  const submissionsQuery = useSubmissionsList(query, !dateRangeInvalid);
   const brokerQuery = useBrokerOptions();
 
   const totalCount = submissionsQuery.data?.count ?? 0;
@@ -256,6 +259,9 @@ function SubmissionsWorkspace() {
                     onChange={(e) => updateParams({ createdFrom: e.target.value || null })}
                     size="small"
                     InputLabelProps={{ shrink: true }}
+                    inputProps={{ max: urlCreatedTo || undefined }}
+                    error={dateRangeInvalid}
+                    helperText={dateRangeInvalid ? 'Must be on or before "Created to".' : undefined}
                   />
                   <TextField
                     type="date"
@@ -264,6 +270,11 @@ function SubmissionsWorkspace() {
                     onChange={(e) => updateParams({ createdTo: e.target.value || null })}
                     size="small"
                     InputLabelProps={{ shrink: true }}
+                    inputProps={{ min: urlCreatedFrom || undefined }}
+                    error={dateRangeInvalid}
+                    helperText={
+                      dateRangeInvalid ? 'Must be on or after "Created from".' : undefined
+                    }
                   />
                 </Stack>
                 <Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap">
