@@ -2,7 +2,7 @@
 
 import { keepPreviousData, QueryKey, useQuery } from '@tanstack/react-query';
 
-import { apiClient } from '@/lib/api-client';
+import { apiClient, COLD_START_TIMEOUT_MS } from '@/lib/api-client';
 import {
   PaginatedResponse,
   SubmissionDetail,
@@ -31,12 +31,15 @@ export function buildParams(query: SubmissionListQuery) {
 async function fetchSubmissions(query: SubmissionListQuery) {
   const response = await apiClient.get<PaginatedResponse<SubmissionListItem>>('/submissions/', {
     params: buildParams(query),
+    timeout: COLD_START_TIMEOUT_MS,
   });
   return response.data;
 }
 
 async function fetchSubmissionDetail(id: string | number) {
-  const response = await apiClient.get<SubmissionDetail>(`/submissions/${id}/`);
+  const response = await apiClient.get<SubmissionDetail>(`/submissions/${id}/`, {
+    timeout: COLD_START_TIMEOUT_MS,
+  });
   return response.data;
 }
 

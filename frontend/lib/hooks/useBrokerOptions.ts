@@ -2,11 +2,13 @@
 
 import { useQuery } from '@tanstack/react-query';
 
-import { apiClient } from '@/lib/api-client';
+import { apiClient, COLD_START_TIMEOUT_MS } from '@/lib/api-client';
 import { Broker } from '@/lib/types';
 
 async function fetchBrokers() {
-  const response = await apiClient.get<Broker[]>('/brokers/');
+  const response = await apiClient.get<Broker[]>('/brokers/', {
+    timeout: COLD_START_TIMEOUT_MS,
+  });
   return response.data;
 }
 
