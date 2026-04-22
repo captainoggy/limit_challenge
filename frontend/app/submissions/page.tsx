@@ -501,6 +501,13 @@ function SubmissionsTable({
                       active={isActive}
                       direction={isActive ? sort.direction : 'asc'}
                       onClick={() => onSortChange(col.sortKey!)}
+                      // Keep the arrow visible (faded) on inactive columns so
+                      // users can see a column is sortable without hovering.
+                      sx={{
+                        '& .MuiTableSortLabel-icon': {
+                          opacity: isActive ? 1 : 0.35,
+                        },
+                      }}
                     >
                       {col.label}
                     </TableSortLabel>
