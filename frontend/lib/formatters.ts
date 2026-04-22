@@ -31,29 +31,29 @@ const dateTimeFormatter = new Intl.DateTimeFormat('en-US', {
 
 export function formatDate(iso: string | null | undefined) {
   if (!iso) return '—';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '—';
-  return dateFormatter.format(d);
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '—';
+  return dateFormatter.format(date);
 }
 
 export function formatDateTime(iso: string | null | undefined) {
   if (!iso) return '—';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '—';
-  return dateTimeFormatter.format(d);
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '—';
+  return dateTimeFormatter.format(date);
 }
 
 export function formatRelative(iso: string | null | undefined) {
   if (!iso) return '';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  const diffMs = Date.now() - d.getTime();
-  const diffMin = Math.round(diffMs / 60_000);
-  if (diffMin < 1) return 'just now';
-  if (diffMin < 60) return `${diffMin}m ago`;
-  const diffH = Math.round(diffMin / 60);
-  if (diffH < 24) return `${diffH}h ago`;
-  const diffD = Math.round(diffH / 24);
-  if (diffD < 30) return `${diffD}d ago`;
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '';
+  const diffMs = Date.now() - date.getTime();
+  const diffMinutes = Math.round(diffMs / 60_000);
+  if (diffMinutes < 1) return 'just now';
+  if (diffMinutes < 60) return `${diffMinutes}m ago`;
+  const diffHours = Math.round(diffMinutes / 60);
+  if (diffHours < 24) return `${diffHours}h ago`;
+  const diffDays = Math.round(diffHours / 24);
+  if (diffDays < 30) return `${diffDays}d ago`;
   return formatDate(iso);
 }

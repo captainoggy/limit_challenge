@@ -197,25 +197,25 @@ function ContactsCard({ contacts }: { contacts: Contact[] }) {
           <EmptySection text="No contacts linked to this submission yet." />
         ) : (
           <Stack divider={<Divider flexItem />} spacing={0}>
-            {contacts.map((c) => (
-              <Box key={c.id} sx={{ py: 1.5 }}>
+            {contacts.map((contact) => (
+              <Box key={contact.id} sx={{ py: 1.5 }}>
                 <Typography variant="body1" fontWeight={500}>
-                  {c.name}
+                  {contact.name}
                 </Typography>
-                {c.role ? (
+                {contact.role ? (
                   <Typography variant="body2" color="text.secondary">
-                    {c.role}
+                    {contact.role}
                   </Typography>
                 ) : null}
                 <Stack direction="row" spacing={2} sx={{ mt: 0.5 }} flexWrap="wrap">
-                  {c.email ? (
-                    <MuiLink href={`mailto:${c.email}`} variant="body2">
-                      {c.email}
+                  {contact.email ? (
+                    <MuiLink href={`mailto:${contact.email}`} variant="body2">
+                      {contact.email}
                     </MuiLink>
                   ) : null}
-                  {c.phone ? (
+                  {contact.phone ? (
                     <Typography variant="body2" color="text.secondary">
-                      {c.phone}
+                      {contact.phone}
                     </Typography>
                   ) : null}
                 </Stack>
@@ -237,9 +237,9 @@ function DocumentsCard({ documents }: { documents: Document[] }) {
           <EmptySection text="No documents uploaded yet." />
         ) : (
           <Stack divider={<Divider flexItem />} spacing={0}>
-            {documents.map((d) => (
+            {documents.map((doc) => (
               <Box
-                key={d.id}
+                key={doc.id}
                 sx={{
                   py: 1.5,
                   display: 'flex',
@@ -250,18 +250,18 @@ function DocumentsCard({ documents }: { documents: Document[] }) {
               >
                 <Box sx={{ minWidth: 0 }}>
                   <Typography variant="body1" fontWeight={500} noWrap>
-                    {d.title}
+                    {doc.title}
                   </Typography>
                   <Typography variant="caption" color="text.secondary">
-                    {d.docType} · uploaded {formatDate(d.uploadedAt)}
+                    {doc.docType} · uploaded {formatDate(doc.uploadedAt)}
                   </Typography>
                 </Box>
-                {d.fileUrl ? (
+                {doc.fileUrl ? (
                   <Button
                     size="small"
                     variant="outlined"
                     component="a"
-                    href={d.fileUrl}
+                    href={doc.fileUrl}
                     target="_blank"
                     rel="noreferrer noopener"
                   >
@@ -286,22 +286,22 @@ function NotesCard({ notes }: { notes: NoteDetail[] }) {
           <EmptySection text="No notes recorded yet." />
         ) : (
           <Stack spacing={2.5}>
-            {notes.map((n) => (
-              <Stack key={n.id} direction="row" spacing={1.5} alignItems="flex-start">
+            {notes.map((note) => (
+              <Stack key={note.id} direction="row" spacing={1.5} alignItems="flex-start">
                 <Avatar sx={{ bgcolor: 'primary.main', width: 32, height: 32, fontSize: 14 }}>
-                  {initials(n.authorName)}
+                  {initials(note.authorName)}
                 </Avatar>
                 <Box sx={{ flex: 1, minWidth: 0 }}>
                   <Stack direction="row" spacing={1} alignItems="baseline" flexWrap="wrap">
                     <Typography variant="body2" fontWeight={600}>
-                      {n.authorName}
+                      {note.authorName}
                     </Typography>
                     <Typography variant="caption" color="text.secondary">
-                      {formatDateTime(n.createdAt)}
+                      {formatDateTime(note.createdAt)}
                     </Typography>
                   </Stack>
                   <Typography variant="body2" sx={{ mt: 0.5, whiteSpace: 'pre-wrap' }}>
-                    {n.body}
+                    {note.body}
                   </Typography>
                 </Box>
               </Stack>
