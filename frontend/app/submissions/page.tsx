@@ -1,21 +1,40 @@
 'use client';
 
 import {
+  Alert,
   Box,
+  Button,
   Card,
   CardContent,
+  Chip,
   Container,
-  Divider,
+  FormControlLabel,
+  LinearProgress,
   MenuItem,
+  Pagination,
+  Paper,
+  Skeleton,
   Stack,
+  Switch,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
   TextField,
+  Tooltip,
   Typography,
 } from '@mui/material';
-import { useMemo, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 
 import { useBrokerOptions } from '@/lib/hooks/useBrokerOptions';
-import { useSubmissionsList } from '@/lib/hooks/useSubmissions';
-import { SubmissionStatus } from '@/lib/types';
+import { DEFAULT_PAGE_SIZE, useSubmissionsList } from '@/lib/hooks/useSubmissions';
+import { PRIORITY_META, STATUS_META, formatDate, formatRelative } from '@/lib/formatters';
+import type { SubmissionListItem, SubmissionListQuery, SubmissionStatus } from '@/lib/types';
+
+const PAGE_SIZE_OPTIONS = [10, 20, 50, 100] as const;
 
 const STATUS_OPTIONS: { label: string; value: SubmissionStatus | '' }[] = [
   { label: 'All statuses', value: '' },
@@ -25,96 +44,535 @@ const STATUS_OPTIONS: { label: string; value: SubmissionStatus | '' }[] = [
   { label: 'Lost', value: 'lost' },
 ];
 
+function parseBool(raw: string | null): boolean | undefined {
+  if (raw === 'true') return true;
+  if (raw === 'false') return false;
+  return undefined;
+}
+
+function useDebounced<T>(value: T, delay = 300) {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(t);
+  }, [value, delay]);
+  return debounced;
+}
+
 export default function SubmissionsPage() {
-  const [status, setStatus] = useState<SubmissionStatus | ''>('');
-  const [brokerId, setBrokerId] = useState('');
-  const [companyQuery, setCompanyQuery] = useState('');
-
-  const filters = useMemo(
-    () => ({
-      status: status || undefined,
-      brokerId: brokerId || undefined,
-      companySearch: companyQuery || undefined,
-    }),
-    [status, brokerId, companyQuery],
-  );
-
-  const submissionsQuery = useSubmissionsList(filters);
-  const brokerQuery = useBrokerOptions();
-
   return (
-    <Container maxWidth="lg" sx={{ py: 6 }}>
-      <Stack spacing={4}>
+    <Suspense fallback={<SubmissionsFallback />}>
+      <SubmissionsWorkspace />
+    </Suspense>
+  );
+}
+
+function SubmissionsFallback() {
+  return (
+    <Container maxWidth="xl" sx={{ py: { xs: 3, md: 5 } }}>
+      <Stack spacing={3}>
         <Box>
-          <Typography variant="h4" component="h1">
+          <Typography variant="h4" component="h1" fontWeight={600}>
             Submissions
           </Typography>
-          <Typography color="text.secondary">
-            Filters update the query parameters and drive backend filtering. Hook these inputs to
-            your API calls when you implement the actual data fetching.
+          <Typography color="text.secondary" sx={{ mt: 0.5 }}>
+            Loading workspace…
+          </Typography>
+        </Box>
+        <SubmissionsTableSkeleton />
+      </Stack>
+    </Container>
+  );
+}
+
+function SubmissionsWorkspace() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // URL is the source of truth for every filter + page.
+  const urlStatus = (searchParams.get('status') ?? '') as SubmissionStatus | '';
+  const urlBrokerId = searchParams.get('brokerId') ?? '';
+  const urlCompanySearch = searchParams.get('companySearch') ?? '';
+  const urlCreatedFrom = searchParams.get('createdFrom') ?? '';
+  const urlCreatedTo = searchParams.get('createdTo') ?? '';
+  const urlHasDocuments = parseBool(searchParams.get('hasDocuments'));
+  const urlHasNotes = parseBool(searchParams.get('hasNotes'));
+  const urlPage = Math.max(1, Number(searchParams.get('page') ?? '1') || 1);
+  const urlPageSize = (() => {
+    const raw = Number(searchParams.get('pageSize'));
+    return PAGE_SIZE_OPTIONS.includes(raw as (typeof PAGE_SIZE_OPTIONS)[number])
+      ? raw
+      : DEFAULT_PAGE_SIZE;
+  })();
+
+  // Local state for the free-text company search so typing feels snappy and we
+  // debounce URL updates (which drive the query).
+  const [companyInput, setCompanyInput] = useState(urlCompanySearch);
+  useEffect(() => {
+    setCompanyInput(urlCompanySearch);
+  }, [urlCompanySearch]);
+  const debouncedCompany = useDebounced(companyInput, 300);
+
+  const updateParams = useCallback(
+    (changes: Record<string, string | null>) => {
+      const next = new URLSearchParams(searchParams.toString());
+      for (const [key, value] of Object.entries(changes)) {
+        if (value === null || value === '') next.delete(key);
+        else next.set(key, value);
+      }
+      // Any filter change resets pagination.
+      if (!('page' in changes)) next.delete('page');
+      const qs = next.toString();
+      router.replace(qs ? `/submissions?${qs}` : '/submissions', { scroll: false });
+    },
+    [router, searchParams],
+  );
+
+  // Keep URL's companySearch in sync with the debounced input.
+  useEffect(() => {
+    if (debouncedCompany === urlCompanySearch) return;
+    updateParams({ companySearch: debouncedCompany || null });
+  }, [debouncedCompany, urlCompanySearch, updateParams]);
+
+  const query: SubmissionListQuery = useMemo(
+    () => ({
+      status: urlStatus || undefined,
+      brokerId: urlBrokerId || undefined,
+      companySearch: urlCompanySearch || undefined,
+      createdFrom: urlCreatedFrom ? `${urlCreatedFrom}T00:00:00Z` : undefined,
+      createdTo: urlCreatedTo ? `${urlCreatedTo}T23:59:59Z` : undefined,
+      hasDocuments: urlHasDocuments,
+      hasNotes: urlHasNotes,
+      page: urlPage,
+      pageSize: urlPageSize,
+    }),
+    [
+      urlStatus,
+      urlBrokerId,
+      urlCompanySearch,
+      urlCreatedFrom,
+      urlCreatedTo,
+      urlHasDocuments,
+      urlHasNotes,
+      urlPage,
+      urlPageSize,
+    ],
+  );
+
+  const submissionsQuery = useSubmissionsList(query);
+  const brokerQuery = useBrokerOptions();
+
+  const totalCount = submissionsQuery.data?.count ?? 0;
+  const totalPages = Math.max(1, Math.ceil(totalCount / urlPageSize));
+  const rows = submissionsQuery.data?.results ?? [];
+
+  const activeFilterCount = [
+    urlStatus,
+    urlBrokerId,
+    urlCompanySearch,
+    urlCreatedFrom,
+    urlCreatedTo,
+    urlHasDocuments !== undefined,
+    urlHasNotes !== undefined,
+  ].filter(Boolean).length;
+
+  const clearFilters = () => {
+    setCompanyInput('');
+    router.replace('/submissions', { scroll: false });
+  };
+
+  return (
+    <Container maxWidth="xl" sx={{ py: { xs: 3, md: 5 } }}>
+      <Stack spacing={3}>
+        <Box>
+          <Typography variant="h4" component="h1" fontWeight={600}>
+            Submissions
+          </Typography>
+          <Typography color="text.secondary" sx={{ mt: 0.5 }}>
+            Review broker-submitted opportunities, filter by context, and open any record for the
+            full story.
           </Typography>
         </Box>
 
         <Card variant="outlined">
           <CardContent>
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-              <TextField
-                select
-                label="Status"
-                value={status}
-                onChange={(event) => setStatus(event.target.value as SubmissionStatus | '')}
-                fullWidth
+            <Stack spacing={2}>
+              <Stack
+                direction={{ xs: 'column', md: 'row' }}
+                spacing={2}
+                alignItems={{ md: 'center' }}
               >
-                {STATUS_OPTIONS.map((option) => (
-                  <MenuItem key={option.value || 'all'} value={option.value}>
-                    {option.label}
-                  </MenuItem>
-                ))}
-              </TextField>
-              <TextField
-                select
-                label="Broker"
-                value={brokerId}
-                onChange={(event) => setBrokerId(event.target.value)}
-                fullWidth
-                helperText="Populate options via /api/brokers"
+                <TextField
+                  label="Company search"
+                  placeholder="Name, industry, or city"
+                  value={companyInput}
+                  onChange={(e) => setCompanyInput(e.target.value)}
+                  sx={{ flex: 2 }}
+                  size="small"
+                />
+                <TextField
+                  select
+                  label="Status"
+                  value={urlStatus}
+                  onChange={(e) => updateParams({ status: e.target.value || null })}
+                  sx={{ flex: 1, minWidth: 160 }}
+                  size="small"
+                >
+                  {STATUS_OPTIONS.map((option) => (
+                    <MenuItem key={option.value || 'all'} value={option.value}>
+                      {option.label}
+                    </MenuItem>
+                  ))}
+                </TextField>
+                <TextField
+                  select
+                  label="Broker"
+                  value={urlBrokerId}
+                  onChange={(e) => updateParams({ brokerId: e.target.value || null })}
+                  sx={{ flex: 1, minWidth: 200 }}
+                  size="small"
+                  disabled={brokerQuery.isLoading}
+                >
+                  <MenuItem value="">All brokers</MenuItem>
+                  {brokerQuery.data?.map((broker) => (
+                    <MenuItem key={broker.id} value={String(broker.id)}>
+                      {broker.name}
+                    </MenuItem>
+                  ))}
+                </TextField>
+              </Stack>
+
+              <Stack
+                direction={{ xs: 'column', md: 'row' }}
+                spacing={2}
+                alignItems={{ md: 'center' }}
+                justifyContent="space-between"
               >
-                <MenuItem value="">All brokers</MenuItem>
-                {brokerQuery.data?.map((broker) => (
-                  <MenuItem key={broker.id} value={String(broker.id)}>
-                    {broker.name}
-                  </MenuItem>
-                ))}
-              </TextField>
-              <TextField
-                label="Company search"
-                value={companyQuery}
-                onChange={(event) => setCompanyQuery(event.target.value)}
-                fullWidth
-                helperText="Send as ?companySearch=..."
-              />
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+                  <TextField
+                    type="date"
+                    label="Created from"
+                    value={urlCreatedFrom}
+                    onChange={(e) => updateParams({ createdFrom: e.target.value || null })}
+                    size="small"
+                    InputLabelProps={{ shrink: true }}
+                  />
+                  <TextField
+                    type="date"
+                    label="Created to"
+                    value={urlCreatedTo}
+                    onChange={(e) => updateParams({ createdTo: e.target.value || null })}
+                    size="small"
+                    InputLabelProps={{ shrink: true }}
+                  />
+                </Stack>
+                <Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap">
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        size="small"
+                        checked={urlHasDocuments === true}
+                        onChange={(e) =>
+                          updateParams({ hasDocuments: e.target.checked ? 'true' : null })
+                        }
+                      />
+                    }
+                    label="Has documents"
+                  />
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        size="small"
+                        checked={urlHasNotes === true}
+                        onChange={(e) =>
+                          updateParams({ hasNotes: e.target.checked ? 'true' : null })
+                        }
+                      />
+                    }
+                    label="Has notes"
+                  />
+                  <Button
+                    size="small"
+                    variant="text"
+                    onClick={clearFilters}
+                    disabled={activeFilterCount === 0}
+                  >
+                    Clear filters
+                    {activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}
+                  </Button>
+                </Stack>
+              </Stack>
             </Stack>
           </CardContent>
         </Card>
 
-        <Card variant="outlined">
-          <CardContent>
-            <Stack spacing={2}>
-              <Typography variant="h6">Submission list</Typography>
-              <Typography color="text.secondary">
-                Hook `submissionsQuery` to render rows, totals, and pagination states. The query is
-                disabled by default so no network calls fire until you enable it.
+        <Box>
+          <ResultsHeader totalCount={totalCount} page={urlPage} pageSize={urlPageSize} />
+          <LinearProgress
+            sx={{
+              mt: 1,
+              height: 2,
+              borderRadius: 1,
+              visibility:
+                submissionsQuery.isFetching && !submissionsQuery.isLoading ? 'visible' : 'hidden',
+            }}
+          />
+        </Box>
+
+        {submissionsQuery.isError ? (
+          <Alert
+            severity="error"
+            action={
+              <Button color="inherit" size="small" onClick={() => submissionsQuery.refetch()}>
+                Retry
+              </Button>
+            }
+          >
+            Failed to load submissions. Check that the API is running at{' '}
+            {process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:8000/api'}.
+          </Alert>
+        ) : submissionsQuery.isLoading ? (
+          <SubmissionsTableSkeleton />
+        ) : rows.length === 0 ? (
+          <EmptyState onClear={activeFilterCount > 0 ? clearFilters : undefined} />
+        ) : (
+          <SubmissionsTable rows={rows} onRowClick={(id) => router.push(`/submissions/${id}`)} />
+        )}
+
+        {totalCount > 0 ? (
+          <Stack
+            direction={{ xs: 'column', sm: 'row' }}
+            spacing={2}
+            alignItems="center"
+            justifyContent="space-between"
+            pt={1}
+          >
+            <Stack direction="row" spacing={1} alignItems="center">
+              <Typography variant="body2" color="text.secondary">
+                Rows per page
               </Typography>
-              <Divider />
-              <Box>
-                <pre style={{ margin: 0, fontSize: 14 }}>
-                  {JSON.stringify({ filters, queryKey: submissionsQuery.queryKey }, null, 2)}
-                </pre>
-              </Box>
+              <TextField
+                select
+                size="small"
+                value={urlPageSize}
+                onChange={(e) => {
+                  const next = Number(e.target.value);
+                  updateParams({
+                    pageSize: next === DEFAULT_PAGE_SIZE ? null : String(next),
+                    page: null,
+                  });
+                }}
+                sx={{ minWidth: 88 }}
+              >
+                {PAGE_SIZE_OPTIONS.map((size) => (
+                  <MenuItem key={size} value={size}>
+                    {size}
+                  </MenuItem>
+                ))}
+              </TextField>
             </Stack>
-          </CardContent>
-        </Card>
+            <Pagination
+              color="primary"
+              count={totalPages}
+              page={urlPage}
+              onChange={(_, next) => updateParams({ page: next > 1 ? String(next) : null })}
+              showFirstButton
+              showLastButton
+            />
+          </Stack>
+        ) : null}
       </Stack>
     </Container>
+  );
+}
+
+function ResultsHeader({
+  totalCount,
+  page,
+  pageSize,
+}: {
+  totalCount: number;
+  page: number;
+  pageSize: number;
+}) {
+  if (totalCount === 0) {
+    return (
+      <Typography color="text.secondary" variant="body2">
+        0 submissions
+      </Typography>
+    );
+  }
+  const from = (page - 1) * pageSize + 1;
+  const to = Math.min(page * pageSize, totalCount);
+  return (
+    <Typography color="text.secondary" variant="body2">
+      Showing {from}–{to} of {totalCount.toLocaleString()} submissions
+    </Typography>
+  );
+}
+
+function SubmissionsTable({
+  rows,
+  onRowClick,
+}: {
+  rows: SubmissionListItem[];
+  onRowClick: (id: number) => void;
+}) {
+  return (
+    <TableContainer component={Paper} variant="outlined">
+      <Table size="medium">
+        <TableHead>
+          <TableRow>
+            <TableCell>Company</TableCell>
+            <TableCell>Broker</TableCell>
+            <TableCell>Owner</TableCell>
+            <TableCell>Status</TableCell>
+            <TableCell>Priority</TableCell>
+            <TableCell align="right">Docs</TableCell>
+            <TableCell align="right">Notes</TableCell>
+            <TableCell>Latest note</TableCell>
+            <TableCell>Created</TableCell>
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {rows.map((row) => (
+            <TableRow
+              key={row.id}
+              hover
+              sx={{ cursor: 'pointer' }}
+              onClick={() => onRowClick(row.id)}
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') onRowClick(row.id);
+              }}
+            >
+              <TableCell>
+                <Typography variant="body2" fontWeight={600}>
+                  {row.company.legalName}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {[row.company.industry, row.company.headquartersCity].filter(Boolean).join(' · ')}
+                </Typography>
+              </TableCell>
+              <TableCell>
+                <Typography variant="body2">{row.broker.name}</Typography>
+                {row.broker.primaryContactEmail ? (
+                  <Typography variant="caption" color="text.secondary">
+                    {row.broker.primaryContactEmail}
+                  </Typography>
+                ) : null}
+              </TableCell>
+              <TableCell>
+                <Typography variant="body2">{row.owner.fullName}</Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {row.owner.email}
+                </Typography>
+              </TableCell>
+              <TableCell>
+                <Chip
+                  size="small"
+                  variant="outlined"
+                  label={STATUS_META[row.status].label}
+                  color={STATUS_META[row.status].color}
+                />
+              </TableCell>
+              <TableCell>
+                <Chip
+                  size="small"
+                  label={PRIORITY_META[row.priority].label}
+                  color={PRIORITY_META[row.priority].color}
+                />
+              </TableCell>
+              <TableCell align="right">{row.documentCount}</TableCell>
+              <TableCell align="right">{row.noteCount}</TableCell>
+              <TableCell sx={{ maxWidth: 260 }}>
+                {row.latestNote ? (
+                  <Tooltip title={row.latestNote.bodyPreview} placement="top-start">
+                    <Box>
+                      <Typography variant="caption" color="text.secondary">
+                        {row.latestNote.authorName} · {formatRelative(row.latestNote.createdAt)}
+                      </Typography>
+                      <Typography
+                        variant="body2"
+                        sx={{
+                          display: '-webkit-box',
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: 'vertical',
+                          overflow: 'hidden',
+                        }}
+                      >
+                        {row.latestNote.bodyPreview}
+                      </Typography>
+                    </Box>
+                  </Tooltip>
+                ) : (
+                  <Typography variant="caption" color="text.disabled">
+                    No notes yet
+                  </Typography>
+                )}
+              </TableCell>
+              <TableCell>
+                <Typography variant="body2">{formatDate(row.createdAt)}</Typography>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </TableContainer>
+  );
+}
+
+function SubmissionsTableSkeleton() {
+  return (
+    <TableContainer component={Paper} variant="outlined">
+      <Table>
+        <TableHead>
+          <TableRow>
+            {[
+              'Company',
+              'Broker',
+              'Owner',
+              'Status',
+              'Priority',
+              'Docs',
+              'Notes',
+              'Latest note',
+              'Created',
+            ].map((h) => (
+              <TableCell key={h}>{h}</TableCell>
+            ))}
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {Array.from({ length: 6 }).map((_, i) => (
+            <TableRow key={i}>
+              {Array.from({ length: 9 }).map((_, j) => (
+                <TableCell key={j}>
+                  <Skeleton variant="text" />
+                </TableCell>
+              ))}
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </TableContainer>
+  );
+}
+
+function EmptyState({ onClear }: { onClear?: () => void }) {
+  return (
+    <Paper variant="outlined" sx={{ py: 6, textAlign: 'center' }}>
+      <Typography variant="h6" gutterBottom>
+        No submissions match these filters
+      </Typography>
+      <Typography color="text.secondary" sx={{ mb: onClear ? 2 : 0 }}>
+        Try widening your search or clearing a filter to see more results.
+      </Typography>
+      {onClear ? (
+        <Button variant="outlined" onClick={onClear}>
+          Clear all filters
+        </Button>
+      ) : null}
+    </Paper>
   );
 }
