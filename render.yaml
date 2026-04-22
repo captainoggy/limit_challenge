@@ -1,0 +1,37 @@
+# Render Blueprint for the Submission Tracker backend.
+# https://render.com/docs/blueprint-spec
+#
+# Usage:
+#   1. Create a free Render account.
+#   2. In the dashboard: "New +" → "Blueprint" → select this repo.
+#   3. Render reads this file and provisions the service automatically.
+#   4. Every push to `main` triggers an auto-deploy.
+#
+# After the frontend is deployed on Vercel, update the CORS env vars below
+# (via Render dashboard → service → Environment) with its URL and redeploy.
+
+services:
+  - type: web
+    name: limit-challenge-backend
+    runtime: docker
+    plan: free
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    autoDeploy: true
+    healthCheckPath: /api/brokers/
+    envVars:
+      - key: DJANGO_DEBUG
+        value: "false"
+      - key: DJANGO_SECRET_KEY
+        generateValue: true  # Render generates a strong random value once.
+      - key: DJANGO_ALLOWED_HOSTS
+        # RENDER_EXTERNAL_HOSTNAME is auto-appended in settings.py; this is a
+        # belt-and-braces fallback. Replace with your custom domain if any.
+        value: ".onrender.com"
+      - key: DJANGO_CORS_ALLOWED_ORIGINS
+        # Fill in after the Vercel deployment exists (e.g. https://your-app.vercel.app).
+        sync: false
+      - key: DJANGO_CSRF_TRUSTED_ORIGINS
+        # Same value(s) as CORS_ALLOWED_ORIGINS, scheme included.
+        sync: false

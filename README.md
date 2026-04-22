@@ -81,7 +81,29 @@ polish.
 
 ## Getting Started
 
-### Backend
+### Run with Docker (one command, recommended)
+
+The quickest way to run the full stack — no local Python or Node install required.
+
+```bash
+docker compose up --build
+# → http://localhost:3000   (frontend)
+# → http://localhost:8000   (backend API)
+```
+
+On first boot the backend container applies migrations and seeds demo data
+automatically. The SQLite file is persisted in a named volume (`backend-data`)
+so your data survives `docker compose down`. Wipe it with
+`docker compose down -v` (or `make clean`).
+
+Common targets are wrapped in the `Makefile`: `make up`, `make down`,
+`make logs`, `make clean`, `make test`.
+
+### Run locally (manual)
+
+Use this path if you'd rather work without Docker.
+
+#### Backend
 
 ```bash
 cd backend
@@ -93,17 +115,86 @@ python manage.py seed_submissions  # optional but recommended
 python manage.py runserver 0.0.0.0:8000
 ```
 
-### Frontend
+#### Frontend
 
 ```bash
 cd frontend
 npm install
-cp .env.example .env.local  # create if you want a custom API base
 # NEXT_PUBLIC_API_BASE_URL defaults to http://localhost:8000/api
+# Override it by creating frontend/.env.local
 npm run dev
 ```
 
 Visit `http://localhost:3000/submissions` to start building.
+
+## Deploy to free hosting (Vercel + Render)
+
+Recommended split: **Vercel** for the Next.js frontend (native support, instant
+previews) and **Render** for the Django backend (native Dockerfile support,
+declarative `render.yaml` in this repo). Both have genuine free tiers and both
+auto-deploy on every push to `main`.
+
+### One-time setup (~10 min)
+
+Run through these steps **in order** — the CORS allowlists need the other
+side's URL to exist first.
+
+**A. Deploy the backend on Render**
+
+1. Push this repo to GitHub (you've already got it at `origin`).
+2. Go to <https://dashboard.render.com/> → **New +** → **Blueprint**.
+3. Pick the repo. Render reads `render.yaml` and shows the service it will
+   create (`limit-challenge-backend`). Click **Apply**.
+4. Wait for the first build to finish (~3 min). Copy the service URL —
+   something like `https://limit-challenge-backend.onrender.com`.
+5. Verify the API works: visit
+   `https://<your-render-url>.onrender.com/api/brokers/` — you should see the
+   JSON list of seeded brokers.
+
+**B. Deploy the frontend on Vercel**
+
+1. Go to <https://vercel.com/new> and import the same repo.
+2. Set **Root Directory** to `frontend`. Leave build settings as-is (Vercel
+   auto-detects Next.js).
+3. Add one environment variable under **Environment Variables**:
+   - `NEXT_PUBLIC_API_BASE_URL` = `https://<your-render-url>.onrender.com/api`
+4. Click **Deploy**. Wait ~2 min and copy your Vercel URL
+   (e.g. `https://limit-challenge.vercel.app`).
+
+**C. Open up CORS on the backend**
+
+Back in Render → your service → **Environment** tab → add:
+
+- `DJANGO_CORS_ALLOWED_ORIGINS` = `https://<your-vercel-url>.vercel.app`
+- `DJANGO_CSRF_TRUSTED_ORIGINS` = `https://<your-vercel-url>.vercel.app`
+
+(For multiple origins, comma-separate them.) Render will automatically
+redeploy. Once it's green, open the Vercel URL — the list should load live
+data from Render.
+
+### What happens on every push
+
+Both platforms are webhook-wired to GitHub:
+
+- Push to `main` → Render redeploys backend, Vercel redeploys frontend.
+- Open a PR → Vercel comments with a unique preview URL for that branch.
+
+CI (in `.github/workflows/ci.yml`) runs tests + typecheck + lint + build on
+every PR so broken code can't reach the default branch.
+
+### Known caveats
+
+- **Cold starts on Render free tier.** After 15 min of inactivity the service
+  spins down. The next request takes ~30–60s to warm up, after which response
+  times are normal. Acceptable for a demo; upgrade to the starter plan
+  (~$7/mo) to eliminate it.
+- **Ephemeral SQLite.** Render's free web-service disk does not persist
+  across deploys, so each deploy resets the seed data. The
+  `seed_submissions` command is idempotent and runs on every boot, so the
+  demo data is always present — but any data you add via the admin (there
+  is no admin wired up) would be lost. Wire up a free Neon/Supabase Postgres
+  if you need persistence; swap `DATABASES` in `settings.py` to read
+  `DATABASE_URL`.
 
 ## Development Workflow
 
